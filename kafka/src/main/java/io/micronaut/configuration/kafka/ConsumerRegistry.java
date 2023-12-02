@@ -15,7 +15,10 @@
  */
 package io.micronaut.configuration.kafka;
 
+import java.util.Map;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.common.TopicPartition;
 
 import io.micronaut.core.annotation.NonNull;
@@ -133,4 +136,20 @@ public interface ConsumerRegistry {
      * @since 4.0.1
      */
     void resume(@NonNull String id, @NonNull Collection<TopicPartition> topicPartitions);
+
+    /**
+     * Commit the specified offsets for the specified list of topics and partitions to Kafka
+     * using the consumer with the specified ID.
+     *
+     * <p>Note that this method will request the offsets to be committed, however
+     * the commit request won't be sent right away. It will be sent between consumer polls.</p>
+     *
+     * <p>Note also that while the commit request is not sent, calls to this method with the same
+     * ID and topic partition but different offset replace previous calls.</p>
+     *
+     * @param id The id of the consumer
+     * @param offsets A map of offsets by partition with associate metadata
+     * @since 5.2.1
+     */
+    void commitAsync(@NonNull String id, @NonNull Map<TopicPartition, OffsetAndMetadata> offsets);
 }

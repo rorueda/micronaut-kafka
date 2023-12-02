@@ -54,6 +54,10 @@ public enum OffsetStrategy {
      * Only applicable for transactional processing in combination with {@link io.micronaut.messaging.annotation.SendTo}.
      * Sends offsets to transaction using {@link org.apache.kafka.clients.producer.Producer#sendOffsetsToTransaction(java.util.Map, org.apache.kafka.clients.consumer.ConsumerGroupMetadata)}
      */
-    SEND_TO_TRANSACTION
-
+    SEND_TO_TRANSACTION,
+    /**
+     * Asynchronously commit offsets using {@link org.apache.kafka.clients.consumer.Consumer#commitAsync()} the
+     * offsets manually added for commit with {@link io.micronaut.configuration.kafka.ConsumerRegistry#commitAsync(String, java.util.Map)}}.
+     */
+    ASYNC_MANUAL
 }

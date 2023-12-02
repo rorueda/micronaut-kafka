@@ -66,6 +66,7 @@ abstract class ConsumerState {
     Set<TopicPartition> assignments;
     private Set<TopicPartition> pausedTopicPartitions;
     private Set<TopicPartition> pauseRequests;
+    private Map<TopicPartition, OffsetAndMetadata> commitRequests;
     private boolean autoPaused;
     private boolean pollingStarted;
     private volatile ConsumerCloseState closedState;
@@ -123,6 +124,13 @@ abstract class ConsumerState {
             return false;
         }
         return pauseRequests.containsAll(topicPartitions) && pausedTopicPartitions.containsAll(topicPartitions);
+    }
+
+    synchronized void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets) {
+        if (commitRequests == null) {
+            commitRequests = new HashMap<>();
+        }
+        commitRequests.putAll(offsets);
     }
 
     void wakeUp() {
@@ -190,6 +198,10 @@ abstract class ConsumerState {
 
     private void pollAndProcessRecords() {
         failed = true;
+        // Committing commits added manually (probably outside the listener thread)
+        if (info.offsetStrategy == OffsetStrategy.ASYNC_MANUAL) {
+            commitTopicPartitionsOffsets();
+        }
         // We need to retrieve current offsets in case we need to retry the current record or batch
         final Map<TopicPartition, OffsetAndMetadata> currentOffsets = getCurrentOffsets();
         // Poll records
@@ -258,6 +270,21 @@ abstract class ConsumerState {
         if (pausedTopicPartitions != null) {
             toResume.forEach(pausedTopicPartitions::remove);
         }
+    }
+
+    private synchronized void commitTopicPartitionsOffsets() {
+        if (commitRequests == null || commitRequests.isEmpty()) {
+            return;
+        }
+        // Only attempt to commit active assignments
+        commitRequests.keySet().retainAll(assignments);
+        if (commitRequests.isEmpty()) {
+            return;
+        }
+        LOG.trace("Committing for Consumer [{}] from topic partition: {}", info.clientId, commitRequests);
+        kafkaConsumer.commitAsync(commitRequests, resolveCommitCallback());
+        LOG.debug("Committed for Consumer [{}] from topic partition: {}", info.clientId, commitRequests);
+        commitRequests = new HashMap<>();
     }
 
     protected void handleResultFlux(
@@ -350,14 +377,18 @@ abstract class ConsumerState {
         }
     }
 
-    private void endTransaction(Producer<?, ?> kafkaProducer, ConsumerRecords<?, ?> consumerRecords) {
+    protected Map<TopicPartition, OffsetAndMetadata> getOffsetsToCommit(ConsumerRecords<?, ?> consumerRecords) {
         final Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
         for (TopicPartition partition : consumerRecords.partitions()) {
             List<? extends ConsumerRecord<?, ?>> partitionedRecords = consumerRecords.records(partition);
             long offset = partitionedRecords.get(partitionedRecords.size() - 1).offset();
             offsetsToCommit.put(partition, new OffsetAndMetadata(offset + 1));
         }
-        sendOffsetsToTransaction(kafkaProducer, offsetsToCommit);
+        return offsetsToCommit;
+    }
+
+    private void endTransaction(Producer<?, ?> kafkaProducer, ConsumerRecords<?, ?> consumerRecords) {
+        sendOffsetsToTransaction(kafkaProducer, getOffsetsToCommit(consumerRecords));
     }
 
     private void abortTransaction(Producer<?, ?> kafkaProducer, Exception e) {

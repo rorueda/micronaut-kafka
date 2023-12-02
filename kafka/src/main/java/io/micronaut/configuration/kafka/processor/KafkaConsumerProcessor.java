@@ -270,6 +270,16 @@ class KafkaConsumerProcessor
     }
 
     @Override
+    public void commitAsync(String id, Map<TopicPartition, OffsetAndMetadata> offsets) {
+        ConsumerState consumerState = getConsumerState(id);
+        if (!consumerState.info.offsetStrategy.equals(OffsetStrategy.ASYNC_MANUAL)) {
+            throw new IllegalStateException("Offset strategy must be " + OffsetStrategy.ASYNC_MANUAL
+                +  " but is " + consumerState.info.offsetStrategy);
+        }
+        consumerState.commitAsync(offsets);
+    }
+
+    @Override
     public void process(BeanDefinition<?> beanDefinition, ExecutableMethod<?, ?> method) {
         List<AnnotationValue<Topic>> topicAnnotations = method.getDeclaredAnnotationValuesByType(Topic.class);
         final AnnotationValue<KafkaListener> consumerAnnotation = method.getAnnotation(KafkaListener.class);

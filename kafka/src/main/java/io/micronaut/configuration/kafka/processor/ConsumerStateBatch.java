@@ -22,7 +22,6 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.async.publisher.Publishers;
 import io.micronaut.core.bind.DefaultExecutableBinder;
 import io.micronaut.core.bind.ExecutableBinder;
-import java.util.HashMap;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -82,7 +81,7 @@ final class ConsumerStateBatch extends ConsumerState {
         try {
             // Bind Acknowledgement argument
             if (info.ackArg != null) {
-                final Map<TopicPartition, OffsetAndMetadata> batchOffsets = getAckOffsets(consumerRecords);
+                final Map<TopicPartition, OffsetAndMetadata> batchOffsets = getOffsetsToCommit(consumerRecords);
                 boundArguments.put(info.ackArg, (KafkaAcknowledgement) () -> kafkaConsumer.commitSync(batchOffsets));
             }
             final ExecutableBinder<ConsumerRecords<?, ?>> batchBinder = new DefaultExecutableBinder<>(boundArguments);
@@ -92,16 +91,6 @@ final class ConsumerStateBatch extends ConsumerState {
         } catch (Exception e) {
             failed = resolveWithErrorStrategy(consumerRecords, currentOffsets, e);
         }
-    }
-
-    private Map<TopicPartition, OffsetAndMetadata> getAckOffsets(ConsumerRecords<?, ?> consumerRecords) {
-        Map<TopicPartition, OffsetAndMetadata> ackOffsets = new HashMap<>();
-        for (ConsumerRecord<?, ?> consumerRecord : consumerRecords) {
-            final TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
-            final OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(consumerRecord.offset() + 1, null);
-            ackOffsets.put(topicPartition, offsetAndMetadata);
-        }
-        return ackOffsets;
     }
 
     @Nullable
